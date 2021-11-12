@@ -15,9 +15,9 @@ const knex = Knex(knexConfig[process.env.NODE_ENV || "development"]);
 Model.knex(knex);
 
 const API_KEY = process.env.LIT_GATHER_CONTROLLER_GATHER_API_KEY;
-
+const INITIAL_LOCATION = [31, 32];
 const ROOMS = {
-  bluechipNfts: {
+  theBar: {
     boundingBox: { start: [11, 29], end: [28, 39] },
     contractAddresses: [
       "0xB212AAbB89337947AF9A1cc41459A0D967C90Aec", // lit genesis gate
@@ -35,16 +35,19 @@ const ROOMS = {
       "0x10daa9f4c0f985430fde4959adb2c791ef2ccf83", //Metakey
     ],
   },
+  backOfBar: {
+    boundingBox: { start: [31, 2], end: [43, 5] },
+    contractAddresses: [
+      "0x049aba7510f45ba5b64ea9e658e342f904db358d",
+      "0x55485885e82e25446dec314ccb810bda06b9e01b",
+    ],
+  },
 };
 
 const roomPermissionsCache = {};
 const lastLocationCache = {};
 
 const warpIfNotPermitted = (data, context) => {
-  const ROOM_BOUNDING_BOX = [
-    [11, 29],
-    [28, 39],
-  ];
   const WALL_THICKNESS = 2;
   const { x, y } = data.playerMoves;
   let playerWarpedOut = false;
@@ -79,12 +82,15 @@ const warpIfNotPermitted = (data, context) => {
 
   if (permittedInRooms.includes(false)) {
     // they are in a private room but they aren't allowed in it.  warp them.
-    game.teleport(
-      context.player.map,
-      lastLocationCache[context.playerId][0],
-      lastLocationCache[context.playerId][1],
-      context.playerId
-    );
+    if (lastLocationCache[context.playerId]) {
+      game.teleport(
+        context.player.map,
+        lastLocationCache[context.playerId][0],
+        lastLocationCache[context.playerId][1],
+        context.playerId
+      );
+    }
+
     playerWarpedOut = true;
     game.chat(
       context.playerId,
@@ -106,6 +112,9 @@ const setRoomPermissions = async (data, context) => {
     })
   )[0];
   // console.log("connectedService", connectedService);
+  if (!roomPermissionsCache[context.playerId]) {
+    roomPermissionsCache[context.playerId] = {};
+  }
   if (connectedService) {
     const userAddress = connectedService.wallet_address;
     const tokenHoldingPromises = Object.keys(ROOMS).map((roomKey) => {
@@ -129,9 +138,6 @@ const setRoomPermissions = async (data, context) => {
     // console.log("tokenHoldingsPerRoom", tokenHoldingsPerRoom);
     tokenHoldingsPerRoom.forEach((tokenHoldings) => {
       const { roomKey } = tokenHoldings;
-      if (!roomPermissionsCache[context.playerId]) {
-        roomPermissionsCache[context.playerId] = {};
-      }
       // console.log(
       //   "tokenHoldings.holdings.length",
       //   tokenHoldings.holdings.length
@@ -155,13 +161,19 @@ const setRoomPermissions = async (data, context) => {
 // what's going on here is better explained in the docs:
 // https://gathertown.notion.site/Gather-Websocket-API-bf2d5d4526db412590c3579c36141063
 const game = new Game(() => Promise.resolve({ apiKey: API_KEY }));
-game.connect("S5u2PCikLdcrivnD\\lit-protocol-integration"); // replace with your spaceId of choice
+game.connect("tXVe5OYt6nHS9Ey5\\lit-protocol"); // replace with your spaceId of choice
 game.subscribeToConnection((connected) => console.log("connected?", connected));
 
 /**** the good stuff ****/
 
 game.subscribeToEvent("playerJoins", async (data, context) => {
   console.log("playerJoins with id", context.playerId);
+  game.teleport(
+    context.player.map,
+    INITIAL_LOCATION[0],
+    INITIAL_LOCATION[1],
+    context.playerId
+  );
   setRoomPermissions(data, context);
 });
 
