@@ -20,8 +20,19 @@ const ROOMS = {
   bluechipNfts: {
     boundingBox: { start: [11, 29], end: [28, 39] },
     contractAddresses: [
-      "0x049aba7510f45ba5b64ea9e658e342f904db358d",
-      "0x55485885e82e25446dec314ccb810bda06b9e01b",
+      "0xB212AAbB89337947AF9A1cc41459A0D967C90Aec", // lit genesis gate
+      "0xf5b0a3efb8e8e4c201e2a935f110eaaf3ffecb8d", // axie infinity
+      "0xb7f7f6c52f2e2fdb1963eab30438024864c313f6", // Wrapped Cryptopunks
+      "0xb47e3cd837ddf8e4c57f05d70ab865de6e193bbb", // non wrapped punks
+      "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d", // Bored Ape Yacht Club
+      "0xff488fd296c38a24cccc60b43dd7254810dab64e", // Zed Run
+      "0x4b3406a41399c7FD2BA65cbC93697Ad9E7eA61e5", // LOSTPOETS
+      "0xa3aee8bce55beea1951ef834b99f3ac60d1abeeb", // VeeFriends
+      "0x57a204aa1042f6e66dd7730813f4024114d74f37", // CyberKongz
+      "0x7EA3Cca10668B8346aeC0bf1844A49e995527c8B", // cyberkongz vx
+      "0xff9c1b15b16263c61d017ee9f65c50e4ae0113d7", // Loot
+      "0x7Bd29408f11D2bFC23c34f18275bBf23bB716Bc7", //Meebits
+      "0x10daa9f4c0f985430fde4959adb2c791ef2ccf83", //Metakey
     ],
   },
 };
