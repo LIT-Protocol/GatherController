@@ -3,7 +3,7 @@
 export default {
   development: {
     client: "pg",
-    connection: process.env.LIT_GATEWAY_DB_URL,
+    connection: process.env.LIT_GATHER_CONTROLLER_DB_URL,
     migrations: {
       tableName: "knex_migrations",
     },
@@ -11,7 +11,7 @@ export default {
 
   staging: {
     client: "pg",
-    connection: process.env.LIT_GATEWAY_DB_URL,
+    connection: process.env.LIT_GATHER_CONTROLLER_DB_URL,
     pool: {
       min: 2,
       max: 10,
@@ -23,7 +23,7 @@ export default {
 
   production: {
     client: "pg",
-    connection: process.env.LIT_GATEWAY_DB_URL,
+    connection: process.env.LIT_GATHER_CONTROLLER_DB_URL,
     pool: {
       min: 2,
       max: 10,
