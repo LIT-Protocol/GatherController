@@ -135,12 +135,12 @@ const setRoomPermissions = async (data, context) => {
         if (idx === 0) {
           qry.where({
             wallet_address: userAddress,
-            contract_address: contractAddress,
+            contract_address: contractAddress.toLowerCase(),
           });
         } else {
           qry.orWhere({
             wallet_address: userAddress,
-            contract_address: contractAddress,
+            contract_address: contractAddress.toLowerCase(),
           });
         }
       });
