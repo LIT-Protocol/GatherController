@@ -9,21 +9,12 @@ export default {
     },
   },
 
-  staging: {
-    client: "pg",
-    connection: process.env.LIT_GATHER_CONTROLLER_DB_URL,
-    pool: {
-      min: 2,
-      max: 10,
-    },
-    migrations: {
-      tableName: "knex_migrations",
-    },
-  },
-
   production: {
     client: "pg",
-    connection: process.env.LIT_GATHER_CONTROLLER_DB_URL,
+    connection: {
+      connectionString: process.env.LIT_GATHER_CONTROLLER_DB_URL,
+      ssl: { rejectUnauthorized: false },
+    },
     pool: {
       min: 2,
       max: 10,
