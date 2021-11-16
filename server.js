@@ -114,6 +114,7 @@ const warpIfNotPermitted = (data, context) => {
   return playerWarpedOut;
 };
 
+// only run when the user connects, and save the results in roomPermissionsCache
 const setRoomPermissions = async (data, context) => {
   // check if the user is permitted
   const connectedService = (
@@ -189,12 +190,12 @@ game.subscribeToEvent("playerJoins", async (data, context) => {
 });
 
 game.subscribeToEvent("playerMoves", async (data, context) => {
-  console.log(
-    context?.player?.name ?? context.playerId,
-    "moved to x,y",
-    data.playerMoves.x,
-    data.playerMoves.y
-  );
+  // console.log(
+  //   context?.player?.name ?? context.playerId,
+  //   "moved to x,y",
+  //   data.playerMoves.x,
+  //   data.playerMoves.y
+  // );
 
   const { x, y } = data.playerMoves;
 
