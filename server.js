@@ -123,7 +123,10 @@ const setRoomPermissions = async (data, context) => {
       service_name: "gather",
     })
   )[0];
-  // console.log("connectedService", connectedService);
+  console.log(
+    "running setRoomPermissions for connectedService",
+    connectedService
+  );
   if (!roomPermissionsCache[context.playerId]) {
     roomPermissionsCache[context.playerId] = {};
   }
@@ -147,7 +150,7 @@ const setRoomPermissions = async (data, context) => {
       return qry.then((holdings) => ({ holdings, roomKey }));
     });
     const tokenHoldingsPerRoom = await Promise.all(tokenHoldingPromises);
-    // console.log("tokenHoldingsPerRoom", tokenHoldingsPerRoom);
+    console.log("tokenHoldingsPerRoom", tokenHoldingsPerRoom);
     tokenHoldingsPerRoom.forEach((tokenHoldings) => {
       const { roomKey } = tokenHoldings;
       // console.log(
