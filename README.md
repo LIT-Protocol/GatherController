@@ -2,7 +2,7 @@
 
 Teleports people who aren't allowed to be in the room, out of the room.
 
-## Code to store the signing conditions (run in browser with lit node connection)
+## Code to store the signing conditions (run in browser with lit node connection) (except for metakey)
 
 ```
 const addys = {
@@ -18,7 +18,7 @@ const addys = {
       "0x7EA3Cca10668B8346aeC0bf1844A49e995527c8B", // cyberkongz vx
       "0xff9c1b15b16263c61d017ee9f65c50e4ae0113d7", // Loot
       "0x7Bd29408f11D2bFC23c34f18275bBf23bB716Bc7", // Meebits
-      "0x10daa9f4c0f985430fde4959adb2c791ef2ccf83", // Metakey
+      // "0x10daa9f4c0f985430fde4959adb2c791ef2ccf83", // Metakey
     ],
     polygon: [
       "0xA3D109E28589D2AbC15991B57Ce5ca461Ad8e026"  // lit genesis gate
@@ -65,4 +65,39 @@ Object.keys(addys).forEach(k => {
 
 console.log(JSON.stringify(resourceIds))
 
+```
+
+## Code for metakey
+
+```
+const contractAddress = "0x10daa9f4c0f985430fde4959adb2c791ef2ccf83"
+const chain = "ethereum"
+
+const authSig = await LitJsSdk.checkAndSignAuthMessage({chain})
+const accessControlConditions = [
+  {
+    contractAddress,
+    standardContractType: 'ERC1155',
+    chain,
+    method: 'balanceOfBatch',
+    parameters: [
+      ':userAddress,:userAddress,:userAddress,:userAddress',
+      '1,2,10003,10004'
+    ],
+    returnValueTest: {
+      comparator: '>',
+      value: '0'
+    }
+  }
+]
+const extraData = JSON.stringify({chain, contractAddress, version: 2})
+const resourceId = {
+  baseUrl: 'gather.town',
+  path: '/app/tXVe5OYt6nHS9Ey5/lit-protocol',
+  orgId: "",
+  role: "",
+  extraData
+}
+
+ await litNodeClient.saveSigningCondition({ accessControlConditions, chain, authSig, resourceId })
 ```
