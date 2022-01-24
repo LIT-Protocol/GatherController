@@ -66,3 +66,41 @@ Object.keys(addys).forEach(k => {
 console.log(JSON.stringify(resourceIds))
 
 ```
+
+## Code to store the conditions for cryptoarcade
+
+```
+const chain = 'harmony'
+const authSig = await LitJsSdk.checkAndSignAuthMessage({chain})
+const accessControlConditions = [
+  {
+    contractAddress: '0x508f6057612b30b024dd054cabdf0c46a7124087',
+    standardContractType: 'ERC1155',
+    chain,
+    method: 'balanceOf',
+    parameters: [
+      ':userAddress',
+      '1053985237318200751294693195373338487820285140688',
+    ],
+    returnValueTest: {
+      comparator: '>',
+      value: '0',
+    },
+  },
+]
+
+const resourceId = {
+  addr: '0x508f6057612b30b024dd054cabdf0c46a7124087',
+  resourceId: {
+    baseUrl: 'gather.town',
+    path: 'IIiU7UpulMdbsQ3w/nostalgea',
+    orgId: '',
+    role: '',
+    extraData:
+      '{"chain":"harmony","contractAddress":"0x508f6057612b30b024dd054cabdf0c46a7124087"}',
+  },
+  chain,
+}
+
+await litNodeClient.saveSigningCondition({ accessControlConditions, chain, authSig, resourceId }
+```
