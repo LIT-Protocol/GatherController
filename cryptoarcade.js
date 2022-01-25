@@ -56,7 +56,7 @@ const warpIfNotPermitted = (data, context) => {
     //   "user is in private room.  their roomPermissionsCache[context.playerId] is ",
     //   roomPermissionsCache[context.playerId]
     // );
-    permittedInRoom = roomPermissionsCache[context.playerId];
+    permittedInRoom = roomPermissionsCache[context.playerId].permitted;
   }
 
   // console.log("permittedInRooms", permittedInRooms);
@@ -110,13 +110,13 @@ const setRoomPermissions = async (data, context) => {
     });
 
     if (tokenHoldings.length > 0) {
-      roomPermissionsCache[context.playerId] = true;
+      roomPermissionsCache[context.playerId].permitted = true;
     } else {
-      roomPermissionsCache[context.playerId] = false;
+      roomPermissionsCache[context.playerId].permitted = false;
     }
   } else {
     // user hasnt connected their wallet.  assume they are not allowed into any rooms.
-    roomPermissionsCache[context.playerId] = false;
+    roomPermissionsCache[context.playerId].permitted = false;
   }
 };
 
@@ -132,12 +132,12 @@ game.subscribeToConnection((connected) => console.log("connected?", connected));
 
 game.subscribeToEvent("playerJoins", async (data, context) => {
   console.log("playerJoins with id", context.playerId);
-  game.teleport(
-    context.player.map,
-    INITIAL_LOCATION[0],
-    INITIAL_LOCATION[1],
-    context.playerId
-  );
+  // game.teleport(
+  //   context.player.map,
+  //   INITIAL_LOCATION[0],
+  //   INITIAL_LOCATION[1],
+  //   context.playerId
+  // );
   setRoomPermissions(data, context);
 });
 

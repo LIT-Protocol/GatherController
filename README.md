@@ -89,18 +89,14 @@ const accessControlConditions = [
   },
 ]
 
-const resourceId = {
-  addr: '0x508f6057612b30b024dd054cabdf0c46a7124087',
-  resourceId: {
-    baseUrl: 'gather.town',
-    path: 'IIiU7UpulMdbsQ3w/nostalgea',
-    orgId: '',
-    role: '',
-    extraData:
-      '{"chain":"harmony","contractAddress":"0x508f6057612b30b024dd054cabdf0c46a7124087"}',
-  },
-  chain,
-}
+resourceId = {
+        baseUrl: 'gather.town',
+        path: 'IIiU7UpulMdbsQ3w/nostalgea',
+        orgId: '',
+        role: '',
+        extraData:
+          '{"chain":"harmony","contractAddress":"0x508f6057612b30b024dd054cabdf0c46a7124087"}',
+      }
 
-await litNodeClient.saveSigningCondition({ accessControlConditions, chain, authSig, resourceId }
+await litNodeClient.saveSigningCondition({ accessControlConditions, chain, authSig, resourceId })
 ```
