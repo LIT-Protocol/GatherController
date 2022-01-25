@@ -91,7 +91,7 @@ const accessControlConditions = [
 
 resourceId = {
         baseUrl: 'gather.town',
-        path: 'IIiU7UpulMdbsQ3w/nostalgea',
+        path: '/app/IIiU7UpulMdbsQ3w/nostalgea',
         orgId: '',
         role: '',
         extraData:
