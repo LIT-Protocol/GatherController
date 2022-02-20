@@ -3,8 +3,9 @@ import webSocket from "isomorphic-ws";
 import { Model } from "objection";
 import Knex from "knex";
 import knexConfig from "./knexfile.js";
-import TokenHolding from "./models/TokenHolding.js";
 import ConnectedService from "./models/ConnectedService.js";
+import GatherLockedSpaces from "./models/GatherLockedSpaces.js";
+import GatherPermittedAreas from "./models/GatherPermittedAreas.js";
 
 global.WebSocket = webSocket;
 
@@ -14,252 +15,239 @@ const knex = Knex(knexConfig[process.env.NODE_ENV || "development"]);
 // Give the knex instance to objection.
 Model.knex(knex);
 
-// const GATHER_API_KEY = process.env.LIT_GATHER_CONTROLLER_GATHER_GATHER_API_KEY;
-const INITIAL_LOCATION = [31, 32];
-const ROOMS = {
-  // theBar: {
-  //   boundingBox: { start: [11, 29], end: [28, 39] },
-  //   contractAddresses: [
-  //     "0xA3D109E28589D2AbC15991B57Ce5ca461Ad8e026", // lit genesis gate
-  //     "0xf5b0a3efb8e8e4c201e2a935f110eaaf3ffecb8d", // axie infinity
-  //     "0xb7f7f6c52f2e2fdb1963eab30438024864c313f6", // Wrapped Cryptopunks
-  //     "0xb47e3cd837ddf8e4c57f05d70ab865de6e193bbb", // non wrapped punks
-  //     "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d", // Bored Ape Yacht Club
-  //     "0xff488fd296c38a24cccc60b43dd7254810dab64e", // Zed Run
-  //     "0x4b3406a41399c7FD2BA65cbC93697Ad9E7eA61e5", // LOSTPOETS
-  //     "0xa3aee8bce55beea1951ef834b99f3ac60d1abeeb", // VeeFriends
-  //     "0x57a204aa1042f6e66dd7730813f4024114d74f37", // CyberKongz
-  //     "0x7EA3Cca10668B8346aeC0bf1844A49e995527c8B", // cyberkongz vx
-  //     "0xff9c1b15b16263c61d017ee9f65c50e4ae0113d7", // Loot
-  //     "0x7Bd29408f11D2bFC23c34f18275bBf23bB716Bc7", //Meebits
-  //     "0x10daa9f4c0f985430fde4959adb2c791ef2ccf83", //Metakey
-  //   ],
-  // },
-  // backOfBar: {
-  //   boundingBox: { start: [31, 2], end: [43, 5] },
-  //   contractAddresses: [
-  //     "0xA3D109E28589D2AbC15991B57Ce5ca461Ad8e026", // lit genesis gate
-  //     "0xf5b0a3efb8e8e4c201e2a935f110eaaf3ffecb8d", // axie infinity
-  //     "0xb7f7f6c52f2e2fdb1963eab30438024864c313f6", // Wrapped Cryptopunks
-  //     "0xb47e3cd837ddf8e4c57f05d70ab865de6e193bbb", // non wrapped punks
-  //     "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d", // Bored Ape Yacht Club
-  //     "0xff488fd296c38a24cccc60b43dd7254810dab64e", // Zed Run
-  //     "0x4b3406a41399c7FD2BA65cbC93697Ad9E7eA61e5", // LOSTPOETS
-  //     "0xa3aee8bce55beea1951ef834b99f3ac60d1abeeb", // VeeFriends
-  //     "0x57a204aa1042f6e66dd7730813f4024114d74f37", // CyberKongz
-  //     "0x7EA3Cca10668B8346aeC0bf1844A49e995527c8B", // cyberkongz vx
-  //     "0xff9c1b15b16263c61d017ee9f65c50e4ae0113d7", // Loot
-  //     "0x7Bd29408f11D2bFC23c34f18275bBf23bB716Bc7", //Meebits
-  //     "0x10daa9f4c0f985430fde4959adb2c791ef2ccf83", //Metakey
-  //   ],
-  // },
-  theAnson:{
-    boundingBox: { start: [18, 18], end: [21, 28] },
-    contractAddresses: [
-      "0xdCA42aC41e79db20995a84DE2cE2368519bcB4d0",
-    ]
-  }
+// -- Helper
+//
+// Turn (String) '18,24' into Array [18, 24]
+// @param { String } coordinates '18, 24'
+// @return { Array } [18, 24]
+//
+const coordinatesStringToArray = (coordinates) => {
+  return (coordinates.replaceAll(' ', '')).split(',').map((coor) => parseInt(coor))
 };
-
-const roomPermissionsCache = {};
-const lastLocationCache = {};
-
-const warpIfNotPermitted = (data, context) => {
-
-  // console.log(`warpIfNotPermitted: `, context);
-
-  const WALL_THICKNESS = 2;
-  const { x, y } = data.playerMoves;
-  let playerWarpedOut = false;
-
-  // loop over the rooms.  if they are in a private room, evaluate if they are allowed
-  // and return true / false
-  // if they are not in a private room, return null
-  // the nulls are filtered out leaving only an array with a single element
-  // that is true / false if they are permitted
-  const permittedInRooms = Object.keys(ROOMS)
-    .map((roomKey) => {
-      const boundingBox = ROOMS[roomKey].boundingBox;
-      // console.log("checking if permitted in " + roomKey);
-      if (
-        x >= boundingBox.start[0] - WALL_THICKNESS &&
-        x <= boundingBox.end[0] + WALL_THICKNESS &&
-        y >= boundingBox.start[1] - WALL_THICKNESS &&
-        y <= boundingBox.end[1] + WALL_THICKNESS
-      ) {
-        // user is in a private room.  are they allowed?
-        // console.log(
-        //   "user is in private room.  their roomPermissionsCache[context.playerId] is ",
-        //   roomPermissionsCache[context.playerId]
-        // );
-        const cache = roomPermissionsCache[context.playerId][roomKey];
-        console.log("Context.playerId: ", context.playerId)
-        console.log("roomKey: ", roomKey)
-        return cache
-      }
-      return null;
-    })
-    .filter((r) => r !== null);
-
-  // console.log("permittedInRooms", permittedInRooms);
-
-  if (permittedInRooms.includes(false)) {
-    // they are in a private room but they aren't allowed in it.  warp them.
-    if (lastLocationCache[context.playerId]) {
-      game.teleport(
-        context.player.map,
-        lastLocationCache[context.playerId][0],
-        lastLocationCache[context.playerId][1],
-        context.playerId
-      );
-    }
-
-    playerWarpedOut = true;
-    game.chat(
-      context.playerId,
-      [context.playerId],
-      context.player.map,
-      `Sorry, you are not permitted to enter this room.`
-    );
-  }
-
-  return playerWarpedOut;
-};
-
-// only run when the user connects, and save the results in roomPermissionsCache
-const setRoomPermissions = async (data, context) => {
-  // check if the user is permitted
-  const connectedService = (
-    await ConnectedService.query().where({
-      id_on_service: context.playerId,
-      service_name: "gather",
-    })
-  )[0];
-  console.log(
-    "running setRoomPermissions for connectedService",
-    connectedService
-  );
-  if (!roomPermissionsCache[context.playerId]) {
-    roomPermissionsCache[context.playerId] = {};
-  }
-  if (connectedService) {
-    const userAddress = connectedService.wallet_address;
-    const tokenHoldingPromises = Object.keys(ROOMS).map((roomKey) => {
-      const qry = TokenHolding.query();
-      ROOMS[roomKey].contractAddresses.forEach((contractAddress, idx) => {
-        if (idx === 0) {
-          qry.where({
-            wallet_address: userAddress,
-            contract_address: contractAddress.toLowerCase(),
-          });
-        } else {
-          qry.orWhere({
-            wallet_address: userAddress,
-            contract_address: contractAddress.toLowerCase(),
-          });
-        }
-      });
-      return qry.then((holdings) => ({ holdings, roomKey }));
-    });
-    const tokenHoldingsPerRoom = await Promise.all(tokenHoldingPromises);
-    console.log("tokenHoldingsPerRoom", tokenHoldingsPerRoom);
-    tokenHoldingsPerRoom.forEach((tokenHoldings) => {
-      const { roomKey } = tokenHoldings;
-      // console.log(
-      //   "tokenHoldings.holdings.length",
-      //   tokenHoldings.holdings.length
-      // );
-      if (tokenHoldings.holdings.length > 0) {
-        roomPermissionsCache[context.playerId][roomKey] = true;
-      } else {
-        roomPermissionsCache[context.playerId][roomKey] = false;
-      }
-    });
-  } else {
-    // user hasnt connected their wallet.  assume they are not allowed into any rooms.
-    Object.keys(ROOMS).forEach((roomKey) => {
-      roomPermissionsCache[context.playerId][roomKey] = false;
-    });
-  }
-};
-
-/**** setup ****/
-
-// what's going on here is better explained in the docs:
-// https://gathertown.notion.site/Gather-Websocket-API-bf2d5d4526db412590c3579c36141063
-// const game = new Game(() => Promise.resolve({ apiKey: GATHER_API_KEY }));
-// game.connect("tXVe5OYt6nHS9Ey5\\lit-protocol"); // replace with your spaceId of choice
-// game.subscribeToConnection((connected) => console.log("connected?", connected));
-
-/**** the good stuff ****/
-
-// game.subscribeToEvent("playerJoins", async (data, context) => {
-//   console.log("playerJoins with id", context.playerId);
-//   game.teleport(
-//     context.player.map,
-//     INITIAL_LOCATION[0],
-//     INITIAL_LOCATION[1],
-//     context.playerId
-//   );
-//   setRoomPermissions(data, context);
-// });
-
-// game.subscribeToEvent("playerMoves", async (data, context) => {
-//   console.log(
-//     context?.player?.name ?? context.playerId,
-//     "moved to x,y",
-//     data.playerMoves.x,
-//     data.playerMoves.y
-//   );
-
-//   const { x, y } = data.playerMoves;
-
-//   if (!roomPermissionsCache[context.playerId]) {
-//     await setRoomPermissions(data, context);
-//   }
-
-//   // game.chat(
-//   //   context.playerId,
-//   //   [context.playerId],
-//   //   context.player.map,
-//   //   `You are at ${data.playerMoves.x}, ${data.playerMoves.y}`
-//   // );
-//   const playerWarpedOut = warpIfNotPermitted(data, context);
-//   if (!playerWarpedOut) {
-//     lastLocationCache[context.playerId] = [x, y];
-//   }
-// });
-
-// game.subscribeToEvent("playerChats", (data, context) => {
-//   console.log("chat from ", context.playerId);
-//   console.log("data", data);
-// });
-
-// PlayerEntersPortal
-
-// -- helpers
-const _log1 = (msg) => console.log("🔥 ", JSON.stringify(msg))
-const _log2 = (msg) => console.log("👉 ", JSON.stringify(msg))
 
 // ======================================================
 // +                    CONSTANTS                       +
 // ======================================================
 const GATHER_API_KEY = process.env.LIT_GATHER_CONTROLLER_GATHER_API_KEY;
 
-// ======================================================
-// +                   User Config                      +
-// ======================================================
-const LIT_PROTOCL_SPACE_ID = "tXVe5OYt6nHS9Ey5\\lit-protocol"; 
-const ANSON_TESTING = "5km5iPeoImi0cbft\\Lit-Test-1";
 
-const ALL_SPACES = [
-  LIT_PROTOCL_SPACE_ID,
-  ANSON_TESTING
-];
+// ======================================================
+// +                Gather Game States                  +
+// ======================================================
+//
+// eg. 
+// {
+//   "xxjOqy4UVxYaHzl2LSs6HygNVbZ2": { <-- playerId
+//     "balcony": false, <-- if user is allowed to enter this space
+//     "roofTop" : false,
+//     ..
+//   }
+// }
+const runningInstances = [];
+const userRestrictedCoordinatesCache = {};
+const lastCoordinates = {};
+
+// ======================================================
+// +                  Gather Helper                     +
+// ======================================================
+
+//
+// Initialise an empty object using playerId as key
+// @param { String } playerId
+// @return { void } 
+//
+const initUserRestrictedCoordinatesCache = (playerId) => {
+  console.log(`🔥 initUserRestrictedCoordinatesCache: ${playerId}`)
+
+  if( ! userRestrictedCoordinatesCache[playerId] ){
+    userRestrictedCoordinatesCache[playerId] = {}
+  }
+  console.log(`👉 userRestrictedCoordinatesCache:`, userRestrictedCoordinatesCache)
+}
+
+// 
+// Deny access to all restricted areas
+// @param { Array } restricted spaces
+// @param { String } playerId
+// @return { void } 
+//
+const denyAllAccess = (areas, playerId) => {
+  console.log(`❌ denyAllAccess: ${areas} ${playerId}`)
+  areas.forEach((area) => {
+    userRestrictedCoordinatesCache[playerId][area.name] = false;
+  })
+}
+
+// ======================================================
+// +                  Gather Setter                     +
+// ======================================================
+
+//
+// Warp user if not permitted to the restircted area
+// @param { String } spaceId
+// @param { int } x
+// @param { int } y
+// @param { context } Object
+// @param { Game } game
+// @return { void }
+//
+const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
+
+  // -- prepare
+  const playerId = context.playerId;
+  const playerMap = context.player.map;
+  const restrictedSpaceInfo = JSON.parse((await GatherLockedSpaces.query().where({space_id: spaceId}))[0].restricted_spaces);
+  
+  // console.log("👉 restrictedSpaceInfo:", restrictedSpaceInfo);
+
+  restrictedSpaceInfo.forEach((space) => {
+    
+    // -- prepare
+    const spaceName = space.name;
+    const wallThickness = parseInt(space.wallThickness);
+    const topLeft = coordinatesStringToArray(space.topLeft);
+    const bottomRight = coordinatesStringToArray(space.bottomRight);
+
+    const isInside = (
+      x >= topLeft[0] - wallThickness &&
+      x <= bottomRight[0] + wallThickness && 
+      y >= topLeft[1] - wallThickness && 
+      y <= bottomRight[1] + wallThickness
+    );
+    
+    const isAllowed = userRestrictedCoordinatesCache[playerId][spaceName];
+
+    // -- validate:: do nothing if it's outside
+    if( ! isInside ){ return }
+
+    // -- validate:: if user is not allowed, teleport user
+    if( ! isAllowed){
+      console.log("❌ NOT ALLOWED!");
+
+      game.teleport(
+        playerMap,
+        lastCoordinates[playerId][0].x,
+        lastCoordinates[playerId][0].y,
+        playerId
+      )
+
+      const requiredCondition = space.humanised;
+      const msg = `❌ DENIED ACCESS[${space.name}]:\n${requiredCondition}`;
+
+      game.chat(playerId, [playerId], playerMap, msg)
+    }
+
+  });
+}
+
+// 
+// Set restricted spaces when user joins 
+// based on its token holdings when it joins the space
+// @param { String } spaceId
+// @param { String } playerId
+// @return { void }
+//
+const setRestrictedSpaces = async (spaceId, playerId) => {
+  console.log("🔥 setRestrictedSpaces")
+
+  // -- cache
+  // Initialise a cache for this playerId if it hasn't done so
+  initUserRestrictedCoordinatesCache(playerId);
+
+  // -- prepare:: connected user
+  const connectedService = await ConnectedService.query().where({id_on_service: playerId, service_name: "gather",});
+  console.log("👉 connectedService:", connectedService.length > 0);
+
+  // -- prepare:: restricted coordinates for this space 
+  const restrictedAreas = JSON.parse((await GatherLockedSpaces.query().where({space_id: spaceId}))[0].restricted_spaces).map((e) => e.name);
+  console.log(`👉 restrictedAreas:`)
+  console.log(restrictedAreas)
+
+  // -- validate
+  if( connectedService.length <= 0 ){
+    console.log(`❌ Player "${playerId}"'s wallet not registered. Denied all access.`)
+    denyAllAccess(restrictedAreas, playerId);
+    return;
+  }
+
+  // -- prepare
+  const playerWalletAddress = connectedService[0].wallet_address;
+  console.log(`👉 playerWalletAddress: ${playerWalletAddress}`)
+
+  // -- prepare:: permitted areas
+  const permittedAreas = JSON.parse((await GatherPermittedAreas.query().where({wallet_address: playerWalletAddress}))[0].permitted_areas);
+
+  console.log("👉 permittedAreas:", permittedAreas);
+
+  // -- check through all areas in the space
+  console.log('------------------------------');
+  restrictedAreas.forEach((area) =>{
+    if( ! permittedAreas.includes(area)){
+      console.log(`❌ ${area} is NOT permitted.`);
+      userRestrictedCoordinatesCache[playerId][area] = false;
+      return;
+    }
+    console.log(`✅ ${area} is permitted.`);
+    userRestrictedCoordinatesCache[playerId][area] = true;
+  })
+  console.log('------------------------------');
+
+  console.log("👉 userRestrictedCoordinatesCache:", userRestrictedCoordinatesCache);
+
+}
+
+// ======================================================
+// +                    DB Helper                       +
+// ======================================================
+
+//
+// Get the X, Y cooridnates of the initial position
+// @param { Int } spaceId
+// @return {x, y}
+//
+const getInitialCoordinates = async (spaceId) => {
+  console.log("🔥 getInitialCoordinates")
+
+  let coordinates = (await GatherLockedSpaces.query().where({space_id: spaceId}))[0].initial_coordinates;
+  console.log(`👉 coordinates: ${coordinates}`);
+  coordinates = coordinates.split(',').map((coor) => parseInt(coor))
+  const x = coordinates[0];
+  const y = coordinates[1];
+  return { x, y };
+}
+
+//
+// Get all spaces is
+// @return { Array } ids
+//
+const getAllSpacesId = async () => {
+  console.log("🔥 getAllSpacesId")
+  const GatherModel = await GatherLockedSpaces.query();
+  const ids = GatherModel.map((e) => e.space_id);
+  return ids
+}
 
 // ======================================================
 // +                  Gather Handlers                   +
 // ======================================================
+
+//
+// Cache & record user last steps
+// @param { String } playerId
+// @param { int } x
+// @param { int } y
+// @return { void }
+//
+const recordLastSteps = (playerId, x, y) =>{
+  if( ! lastCoordinates[playerId] ){
+    lastCoordinates[playerId] = []
+  }
+  lastCoordinates[playerId].push({x, y});
+  
+  if(lastCoordinates[playerId].length > 3){
+    lastCoordinates[playerId].shift();
+  }
+}
 
 //
 // Handler:: Check if connection is subscribed
@@ -267,55 +255,81 @@ const ALL_SPACES = [
 // @return { void }
 //
 const handleConnectionSubscription = (connected) => {
-  _log1("handleConnectionSubscription")
-  _log2(`Connected: ${connected}`)
+  console.log("🔥 handleConnectionSubscription")
+  console.log(`✅ Connected: ${connected}`)
 }
 
 //
 // Handler:: When user joins the space
 // @param { Object } data
 // @param { Object } context
+// @param { Game } game
+// @param { String } spaceId
 // @return { void }
 //
-const handlePlayerJoins = async (data, context) => {
-  _log1("handlePlayerJoins")
+const handlePlayerJoins = async (data, context, game, spaceId) => {
+  console.log(`🔥 handlePlayerJoins: ${spaceId}`)
 
   // -- prepare
   const playerId = context.playerId;
   const playerMap = context.player.map;
-  _log2(`playerId: ${playerId}`);
-  _log2(`playerMap: ${playerMap}`);
+  const {x, y} = await getInitialCoordinates(spaceId);
 
+  console.log(`👉 playerId: ${playerId}`);
+  console.log(`👉 playerMap: ${playerMap}`);
+  console.log(`👉 initialCoordinates: ${x}, ${y}`)
+
+  // -- set user default location
+  game.teleport(playerMap, x, y, playerId);
+
+  // -- set user restricted areas
+  await setRestrictedSpaces(spaceId, playerId)
 }
 
 //
 // Handler:: When a player moves
 // @param { Object } data
 // @param { Object } context
+// @param { Game } game
+// @param { String } spaceId
 // @return { void } 
 //
-const handlePlayerMoves = async(data, context) => {
-  _log1("handlePlayerMoves")
-
+const handlePlayerMoves = async (data, context, game, spaceId) => {
+  
   // -- prepare
-  const player = context?.player?.name ?? context.playerId;
+  const playerId = context.playerId;
+  const player = context?.player?.name ?? playerId;
   const x = data.playerMoves.x;
   const y = data.playerMoves.y;
-  _log2(`player: ${player}`)
-  _log2(`x: ${x}`)
-  _log2(`y: ${y}`)
+
+  console.log(`🔥 handlePlayerMoves(${spaceId}): ${player} moves to ${x},${y}`)
+
+  // -- check if user cache is set
+  if( ! userRestrictedCoordinatesCache[playerId] ){
+    await setRestrictedSpaces(spaceId, playerId);
+  }
+
+  // -- cache user's last positions
+  recordLastSteps(playerId, x, y);
+  
+  // -- check if user enters restircted areas
+  warpIfDeniedAccess(spaceId, x, y, context, game)
+
 }
 
-// ======================================================
-// +               LOOP THROUGH ALL SPACES              +
-// ======================================================
-ALL_SPACES.forEach((SPACE_ID) => {
 
+//
+// Initialise game instance
+// @param { String } spaceId
+// @return { void } 
+//
+const initGameInstance = (spaceId) => {
+  console.log(`🔥 initGameInstance: ${spaceId}`)
   // ------------------------------------------------------
   // +             Initalise Gather Web Socket            +
   // ------------------------------------------------------
   const game = new Game(() => Promise.resolve({ apiKey: GATHER_API_KEY }));
-  game.connect(SPACE_ID); 
+  game.connect(spaceId); 
   
   // ------------------------------------------------------
   // +         Event:: Listen when player connects        +
@@ -325,10 +339,56 @@ ALL_SPACES.forEach((SPACE_ID) => {
   // ------------------------------------------------------
   // +          Event:: Listen when player joins          +
   // ------------------------------------------------------
-  game.subscribeToEvent("playerJoins", (data, context) => handlePlayerJoins(data, context));
+  game.subscribeToEvent("playerJoins", (data, context) => handlePlayerJoins(data, context, game, spaceId));
   
   // ------------------------------------------------------
   // +          Event:: Listen when player moves          +
   // ------------------------------------------------------
-  game.subscribeToEvent("playerMoves", (data, context) => handlePlayerMoves(data, context));
+  game.subscribeToEvent("playerMoves", (data, context) => handlePlayerMoves(data, context, game, spaceId));
+
+}
+
+// ========================================================================================
+// +                                LOOP THROUGH ALL SPACES                               +
+// +                                ---–––––---------------                               +
+// + https://gathertown.notion.site/Gather-Websocket-API-bf2d5d4526db412590c3579c36141063 +
+// ========================================================================================
+let ALL_SPACES = await getAllSpacesId();
+
+ALL_SPACES.forEach((spaceId) => {
+  runningInstances.push(spaceId)
+  initGameInstance(spaceId);
 })
+
+// ========================================================================================
+// +                  Check every minute if there are newly created spaces                +
+// +                                ---–––––---------------                               +
+// ========================================================================================
+setInterval(async () => {
+  
+  let spacesId = await getAllSpacesId()
+
+  // console.log("👉 spacesId:", JSON.stringify(spacesId))
+  // console.log("👉 runningInstances:", JSON.stringify(runningInstances))
+
+  let logged = false;
+
+  spacesId.forEach((spaceId, i) => {
+
+    // -- ignore spaces that are already running
+    if(runningInstances.includes(spaceId)){
+      if( ! logged ){
+        console.log(`[${Date.now()}] 💤 Nothing new here.. still running the same-old instances.`);
+        logged = true;
+      }
+      return;
+    }
+
+    // -- initialise spaces that aren't running
+    console.log("🚀 Launch: ", spaceId);
+    runningInstances.push(spaceId)
+    initGameInstance(spaceId)
+  });
+
+
+}, 60000);
