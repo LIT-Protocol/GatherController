@@ -29,7 +29,8 @@ const coordinatesStringToArray = (coordinates) => {
 };
 
 //
-// Get center coordinates by topLeft and bottomRight
+// Get center coordinates of a restricted area 
+// by topLeft and bottomRight
 // @param { Object } area | restricted area
 // @return { centerX, center Y} int, int
 //
@@ -286,6 +287,7 @@ const getAllSpacesId = async () => {
 
 //
 // Teleport user using the following commands:
+// NOTE: Must be in "Everyone" channel
 // COMMAND: /teleport {name} me <-- to sender's coordinates
 // COMMAND: /teleport {name(case-sensitive)} {coordinates} <-- to a specific coordinates
 // COMMANDS: /teleport {name} {area} <-- to a specific named area eg. balcony
@@ -309,6 +311,11 @@ const chatCommandTeleport = async (senderId, commands, game, context, spaceId) =
     return player;
   }).find((player) => player.name == targetPlayerName);
 
+  // -- validate
+  if( ! targetPlayerInfo ){
+    game.chat(senderId, [senderId], context.player.map, `❌ ${targetPlayerName} doesn't exist`);
+    return;
+  }
   // console.log(targetPlayerInfo.id);
   
   const senderInfo =  Object.values(game.players).map((player, i) => {
@@ -326,10 +333,12 @@ const chatCommandTeleport = async (senderId, commands, game, context, spaceId) =
       senderInfo.y,
       targetPlayerInfo.id
     )
+    return;
   }
   
   // -- (option) to specific coordinates
   if(teleportLocation.includes(',')){
+    console.log("❗❗ to specific coordinates");
     
     const coordinates = teleportLocation.split(',');
 
@@ -351,6 +360,7 @@ const chatCommandTeleport = async (senderId, commands, game, context, spaceId) =
       y,
       targetPlayerInfo.id
     )
+    return;
   }
 
   // -- (option) to a specifc named-area
@@ -368,8 +378,18 @@ const chatCommandTeleport = async (senderId, commands, game, context, spaceId) =
   
   // -- if starts with double
   if(teleportLocation[0] == '"'){
+    console.log("❗❗ if starts with double");
+
     var name = (commands.join(' ')).split('"')[1];
+
     const area = restrictedSpaceInfo.filter((area) => area.name == name)[0];
+    
+    // -- validate
+    if( ! area ){
+      game.chat(senderId, [senderId], context.player.map, `❌ ${name} does not exist.`);
+      return;
+    }
+
     var { centerX, centerY } = getCenter(area);
 
     game.teleport(
@@ -388,6 +408,8 @@ const chatCommandTeleport = async (senderId, commands, game, context, spaceId) =
     return;
   }
 
+  console.log("❗❗ last resort");
+
   const area = restrictedSpaceInfo.filter((area) => area.name == teleportLocation)[0];
   var { centerX, centerY } = getCenter(area);
 
@@ -398,6 +420,8 @@ const chatCommandTeleport = async (senderId, commands, game, context, spaceId) =
     centerY,
     targetPlayerInfo.id
   )
+
+  return;
 
 }
 
@@ -538,8 +562,14 @@ const handlePlayerChat = async (data, context, game, spaceId) => {
   const senderId = data.playerChats.senderId;
   const msg = data.playerChats.contents;
 
+  console.log(msg);
+
   // -- check if it's space creator sending the message
   const connectedService = await ConnectedService.query().where({service_name: 'gather', id_on_service: senderId});
+
+  console.log("senderId:", senderId);
+
+  console.log("connectedService22:", connectedService);
 
   // -- validate: sender connected to service
   if(connectedService.length <= 0){
