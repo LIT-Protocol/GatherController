@@ -16,7 +16,9 @@ const knex = Knex(knexConfig[process.env.NODE_ENV || "development"]);
 // Give the knex instance to objection.
 Model.knex(knex);
 
-// -- Helper
+// ======================================================
+// +                 General Helpers                    +
+// ======================================================
 //
 // Turn (String) '18,24' into Array [18, 24]
 // @param { String } coordinates '18, 24'
@@ -25,6 +27,20 @@ Model.knex(knex);
 const coordinatesStringToArray = (coordinates) => {
   return (coordinates.replaceAll(' ', '')).split(',').map((coor) => parseInt(coor))
 };
+
+//
+// Get center coordinates by topLeft and bottomRight
+// @param { Object } area | restricted area
+// @return { centerX, center Y} int, int
+//
+const getCenter = (area) => {
+  const offsetX = (coordinatesStringToArray(area.bottomRight)[0] - coordinatesStringToArray(area.topLeft)[0]) / 2;
+  const offsetY = (coordinatesStringToArray(area.bottomRight)[1] - coordinatesStringToArray(area.topLeft)[1]) / 2;
+  const centerX = coordinatesStringToArray(area.topLeft)[0] + offsetX;
+  const centerY = coordinatesStringToArray(area.topLeft)[1] + offsetY;
+
+  return { centerX, centerY } 
+}
 
 // ======================================================
 // +                    CONSTANTS                       +
@@ -107,7 +123,16 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
   // -- prepare
   const playerId = context.playerId;
   const playerMap = context.player.map;
-  const restrictedSpaceInfo = JSON.parse((await GatherLockedSpaces.query().where({space_id: spaceId}))[0].restricted_spaces);
+
+  const restrictedAreasResult = await GatherLockedSpaces.query().where({space_id: spaceId});
+
+  // -- validate
+  if( restrictedAreasResult.length <= 0 ){
+    // console.log(`❌ warpIfDeniedAccess: Nothing to be set here`);
+    return;
+  }
+
+  const restrictedSpaceInfo = JSON.parse((restrictedAreasResult)[0].restricted_spaces);
   
   // console.log("👉 restrictedSpaceInfo:", restrictedSpaceInfo);
 
@@ -143,7 +168,7 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
       )
 
       const requiredCondition = space.humanised;
-      const msg = `❌ DENIED ACCESS[${space.name}]:\n${requiredCondition}`;
+      const msg = `❌ denied access to ${space.name}, must \n${requiredCondition}`;
 
       game.chat(playerId, [playerId], playerMap, msg)
     }
@@ -170,7 +195,15 @@ const setRestrictedSpaces = async (spaceId, playerId) => {
   console.log("👉 connectedService:", connectedService.length > 0);
 
   // -- prepare:: restricted coordinates for this space 
-  const restrictedAreas = JSON.parse((await GatherLockedSpaces.query().where({space_id: spaceId}))[0].restricted_spaces).map((e) => e.name);
+  const restrictedAreasResult = await GatherLockedSpaces.query().where({space_id: spaceId});
+
+  // -- validate
+  if( restrictedAreasResult.length <= 0 ){
+    console.log(`❌ setRestrictedSpaces: Nothing to be set here`);
+    return;
+  }
+  
+  const restrictedAreas = JSON.parse(restrictedAreasResult[0].restricted_spaces).map((e) => e.name);
   console.log(`👉 restrictedAreas:`)
   console.log(restrictedAreas)
 
@@ -186,7 +219,15 @@ const setRestrictedSpaces = async (spaceId, playerId) => {
   console.log(`👉 playerWalletAddress: ${playerWalletAddress}`)
 
   // -- prepare:: permitted areas
-  const permittedAreas = JSON.parse((await GatherPermittedAreas.query().where({wallet_address: playerWalletAddress}))[0].permitted_areas);
+  const permittedAreasResult = await GatherPermittedAreas.query().where({wallet_address: playerWalletAddress});
+
+  // -- validate
+  if( permittedAreasResult.length <= 0){
+    denyAllAccess(restrictedAreas, playerId);
+    return;
+  }
+  
+  const permittedAreas = JSON.parse((permittedAreasResult)[0].permitted_areas);
 
   console.log("👉 permittedAreas:", permittedAreas);
 
@@ -219,7 +260,8 @@ const setRestrictedSpaces = async (spaceId, playerId) => {
 const getInitialCoordinates = async (spaceId) => {
   console.log("🔥 getInitialCoordinates")
 
-  let coordinates = (await GatherLockedSpaces.query().where({space_id: spaceId}))[0].initial_coordinates;
+  let coordinates = (await GatherLockedSpaces.query().where({space_id: spaceId}))[0]?.initial_coordinates || '31,32';
+
   console.log(`👉 coordinates: ${coordinates}`);
   coordinates = coordinates.split(',').map((coor) => parseInt(coor))
   const x = coordinates[0];
@@ -239,6 +281,160 @@ const getAllSpacesId = async () => {
 }
 
 // ======================================================
+// +               Chat Commands Handlers               +
+// ======================================================
+
+//
+// Teleport user using the following commands:
+// COMMAND: /teleport {name} me <-- to sender's coordinates
+// COMMAND: /teleport {name(case-sensitive)} {coordinates} <-- to a specific coordinates
+// COMMANDS: /teleport {name} {area} <-- to a specific named area eg. balcony
+// @param { String } senderId
+// @param { Array } commands
+// @param { Game } game
+// @param { Context } context
+// @param { String } spaceId
+// @return { void }
+//
+const chatCommandTeleport = async (senderId, commands, game, context, spaceId) => {
+  const targetPlayerName = commands[1];
+  const teleportLocation = commands[2];
+
+  // -- validate
+  if(targetPlayerName == undefined || teleportLocation == undefined) return;
+
+  // -- prepare
+  const targetPlayerInfo = Object.values(game.players).map((player, i) => {
+    player.id = Object.keys(game.players)[i];
+    return player;
+  }).find((player) => player.name == targetPlayerName);
+
+  // console.log(targetPlayerInfo.id);
+  
+  const senderInfo =  Object.values(game.players).map((player, i) => {
+    player.id = Object.keys(game.players)[i];
+    return player;
+  }).find((player) => player.id == senderId);
+  
+  // console.log(senderInfo);
+
+  // -- (option) to sender's location
+  if(teleportLocation == 'me'){
+    game.teleport(
+      context.player.map,
+      senderInfo.x,
+      senderInfo.y,
+      targetPlayerInfo.id
+    )
+  }
+  
+  // -- (option) to specific coordinates
+  if(teleportLocation.includes(',')){
+    
+    const coordinates = teleportLocation.split(',');
+
+    const x = parseInt(coordinates[0]);
+    const y= parseInt(coordinates[1]);
+    
+    // -- validate is valid coordinates
+    if( ! x || ! y ){
+      game.chat(senderId, [senderId], context.player.map, "❌ Invalid coordinates");
+      return;
+    }
+
+    console.log(`${senderId} sending ${targetPlayerName} to ${x}, ${y}`);
+    
+    // -- teleport
+    game.teleport(
+      context.player.map,
+      x,
+      y,
+      targetPlayerInfo.id
+    )
+  }
+
+  // -- (option) to a specifc named-area
+  const restrictedAreasResult = await GatherLockedSpaces.query().where({space_id: spaceId});
+
+  // -- validate
+  if( restrictedAreasResult.length <= 0 ){
+    game.chat(senderId, [senderId], context.player.map, "❌ No restricted areas in this space.");
+    return;
+  }
+
+  const restrictedSpaceInfo = JSON.parse((restrictedAreasResult)[0].restricted_spaces);
+  
+  var targetArea = restrictedSpaceInfo.filter((area) => area.name == teleportLocation);
+  
+  // -- if starts with double
+  if(teleportLocation[0] == '"'){
+    var name = (commands.join(' ')).split('"')[1];
+    const area = restrictedSpaceInfo.filter((area) => area.name == name)[0];
+    var { centerX, centerY } = getCenter(area);
+
+    game.teleport(
+      context.player.map,
+      centerX,
+      centerY,
+      targetPlayerInfo.id
+    )
+    return;
+  }
+  
+
+  // -- validate
+  if( targetArea.length <= 0){
+    game.chat(senderId, [senderId], context.player.map, `❌ ${teleportLocation} does not exist.`);
+    return;
+  }
+
+  const area = restrictedSpaceInfo.filter((area) => area.name == teleportLocation)[0];
+  var { centerX, centerY } = getCenter(area);
+
+  // -- teleport
+  game.teleport(
+    context.player.map,
+    centerX,
+    centerY,
+    targetPlayerInfo.id
+  )
+
+}
+
+//
+// List all the restricted areas of this space
+// COMMAND: /list
+// @param { String } senderId
+// @param { Array } commands
+// @param { Game } game
+// @param { Context } context
+// @param { String } spaceId
+// @return { void }
+//
+const chatCommandsList = async (senderId, commands, game, context, spaceId) => {
+  const restrictedAreasResult = await GatherLockedSpaces.query().where({space_id: spaceId});
+
+  // -- validate
+  if( restrictedAreasResult.length <= 0 ){
+    game.chat(senderId, [senderId], context.player.map, "No restricted areas in this space.");
+    return;
+  }
+  
+  const restrictedSpaceInfo = JSON.parse((restrictedAreasResult)[0].restricted_spaces);
+  
+  const restrictedAreas = restrictedSpaceInfo.map((area, i) => {
+
+    const { centerX, centerY } = getCenter(area);
+
+    return `${i + 1}: "${area.name}" : (${centerX},${centerY})`;
+  }).join('\n');
+
+  console.log(restrictedAreas);
+  game.chat(senderId, [senderId], context.player.map, restrictedAreas);
+
+}
+
+// ======================================================
 // +                  Gather Handlers                   +
 // ======================================================
 
@@ -255,7 +451,7 @@ const recordLastSteps = (playerId, x, y) =>{
   }
   lastCoordinates[playerId].push({x, y});
   
-  if(lastCoordinates[playerId].length > 3){
+  if(lastCoordinates[playerId].length > 2){
     lastCoordinates[playerId].shift();
   }
 }
@@ -328,6 +524,50 @@ const handlePlayerMoves = async (data, context, game, spaceId) => {
 
 }
 
+//
+// Handler:: Listen to chat
+// @param { Object } data
+// @param { Object } context
+// @param { Game } game
+// @param { String } spaceId
+// @return { void } 
+//
+const handlePlayerChat = async (data, context, game, spaceId) => {
+
+  // -- prepare
+  const senderId = data.playerChats.senderId;
+  const msg = data.playerChats.contents;
+
+  // -- check if it's space creator sending the message
+  const connectedService = await ConnectedService.query().where({service_name: 'gather', id_on_service: senderId});
+
+  // -- validate: sender connected to service
+  if(connectedService.length <= 0){
+    console.log(`❌ ${senderId} not connected to his/her wallet.`);
+    return;
+  }
+  
+  const playerWalletAddress = connectedService[0]?.wallet_address;
+  
+  const isCreator = (await GatherLockedSpaces.query().where({space_id: spaceId, wallet_address: playerWalletAddress})).length > 0;
+
+  if(isCreator){
+    console.log(`👑 [${spaceId}:${senderId}] says: ${msg}`);
+
+    // -- check commands
+    const commands = msg.split(' ');
+    const action = commands[0];
+    
+    // -- handle teleport command
+    if( action == '/teleport'){
+      chatCommandTeleport(senderId, commands, game, context, spaceId);
+    }
+
+    if( action == '/list'){
+      chatCommandsList(senderId, commands, game, context, spaceId);
+    }
+  }
+}
 
 //
 // Initialise game instance
@@ -368,6 +608,11 @@ const initGameInstance = async (spaceId) => {
   // ------------------------------------------------------
   game.subscribeToEvent("playerMoves", (data, context) => handlePlayerMoves(data, context, game, spaceId));
 
+  // ------------------------------------------------------
+  // +               Event:: Listen to chat               +
+  // ------------------------------------------------------
+  game.subscribeToEvent("playerChats", (data, context) => handlePlayerChat(data, context, game, spaceId))
+
 }
 
 // ========================================================================================
@@ -375,11 +620,19 @@ const initGameInstance = async (spaceId) => {
 // +                                ---–––––---------------                               +
 // + https://gathertown.notion.site/Gather-Websocket-API-bf2d5d4526db412590c3579c36141063 +
 // ========================================================================================
-let ALL_SPACES = await getAllSpacesId();
 
-ALL_SPACES.forEach((spaceId) => {
-  initGameInstance(spaceId);
-})
+const DEBUG = true;
+
+if(DEBUG){
+  initGameInstance("tXVe5OYt6nHS9Ey5/lit-protocol")
+}else{
+  let ALL_SPACES = await getAllSpacesId();
+  
+  ALL_SPACES.forEach((spaceId) => {
+    initGameInstance(spaceId);
+  })
+}
+
 
 // ========================================================================================
 // +                  Check every minute if there are newly created spaces                +
