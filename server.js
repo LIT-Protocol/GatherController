@@ -651,10 +651,11 @@ const initGameInstance = async (spaceId) => {
 // + https://gathertown.notion.site/Gather-Websocket-API-bf2d5d4526db412590c3579c36141063 +
 // ========================================================================================
 
-const DEBUG = true;
+const DEBUG = false;
 
 if(DEBUG){
-  initGameInstance("tXVe5OYt6nHS9Ey5/lit-protocol")
+  // initGameInstance("tXVe5OYt6nHS9Ey5/lit-protocol")
+  initGameInstance("4Tq4fQkpxC2Tfci1/Monkey Kingdom")
 }else{
   let ALL_SPACES = await getAllSpacesId();
   
