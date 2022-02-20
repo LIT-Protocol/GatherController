@@ -13,7 +13,7 @@
     "@gathertown/gather-game-client": "^32.0.0",
     "isomorphic-ws": "^4.0.1",
     "knex": "^0.95.12",
-    "lit-js-sdk": "^1.1.122",
+    "node-fetch": "^3.2.0",
     "objection": "^2.2.17",
     "pg": "^8.7.1",
     "ws": "^8.2.2"

@@ -6,6 +6,7 @@ import knexConfig from "./knexfile.js";
 import ConnectedService from "./models/ConnectedService.js";
 import GatherLockedSpaces from "./models/GatherLockedSpaces.js";
 import GatherPermittedAreas from "./models/GatherPermittedAreas.js";
+import fetch from 'node-fetch';
 
 global.WebSocket = webSocket;
 
@@ -50,6 +51,16 @@ const lastCoordinates = {};
 // ======================================================
 // +                  Gather Helper                     +
 // ======================================================
+
+//
+// (GET) Check if a space exists
+// @param { String } spaceId
+// @return { Boolean } 
+//
+const isSpaceExists = async (spaceId) => {
+  const data = await fetch('https://api.gather.town/api/getRoomInfo?room=' + spaceId);
+  return data.status == 200;
+}
 
 //
 // Initialise an empty object using playerId as key
@@ -323,13 +334,24 @@ const handlePlayerMoves = async (data, context, game, spaceId) => {
 // @param { String } spaceId
 // @return { void } 
 //
-const initGameInstance = (spaceId) => {
+const initGameInstance = async (spaceId) => {
   console.log(`🔥 initGameInstance: ${spaceId}`)
+
+  // -- validate: if space exists
+  const spaceExists = await isSpaceExists(spaceId);
+  if( ! spaceExists ){
+    console.log(`❌ ${spaceId} does not exist.`)
+    return;
+  }
+
+  console.log(`✅ ${spaceId} exists.`)
+  runningInstances.push(spaceId)
+
   // ------------------------------------------------------
   // +             Initalise Gather Web Socket            +
   // ------------------------------------------------------
   const game = new Game(() => Promise.resolve({ apiKey: GATHER_API_KEY }));
-  game.connect(spaceId); 
+  game.connect(spaceId);
   
   // ------------------------------------------------------
   // +         Event:: Listen when player connects        +
@@ -356,7 +378,6 @@ const initGameInstance = (spaceId) => {
 let ALL_SPACES = await getAllSpacesId();
 
 ALL_SPACES.forEach((spaceId) => {
-  runningInstances.push(spaceId)
   initGameInstance(spaceId);
 })
 
@@ -386,7 +407,7 @@ setInterval(async () => {
 
     // -- initialise spaces that aren't running
     console.log("🚀 Launch: ", spaceId);
-    runningInstances.push(spaceId)
+
     initGameInstance(spaceId)
   });
 
