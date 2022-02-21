@@ -169,7 +169,7 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
       )
 
       const requiredCondition = space.humanised;
-      const msg = `❌ denied access to ${space.name}, must \n${requiredCondition}`;
+      const msg = `❌ Denied access to ${space.name}, must \n${requiredCondition}`;
 
       game.chat(playerId, [playerId], playerMap, msg)
     }
