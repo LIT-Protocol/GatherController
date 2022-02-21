@@ -1,5 +1,10 @@
 # Gather Controller
 
+## Models
+
+- GatherLockedSpaces.js
+- GatherPermittedAreas.js
+
 ## Commands
 
 | Command | Example | Meaning | Note |
