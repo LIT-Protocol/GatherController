@@ -220,7 +220,10 @@ const setRestrictedSpaces = async (spaceId, playerId) => {
   console.log(`👉 playerWalletAddress: ${playerWalletAddress}`)
 
   // -- prepare:: permitted areas
-  const permittedAreasResult = await GatherPermittedAreas.query().where({wallet_address: playerWalletAddress});
+  const permittedAreasResult = await GatherPermittedAreas.query().where({
+    wallet_address: playerWalletAddress,
+    space_id: spaceId,
+  });
 
   // -- validate
   if( permittedAreasResult.length <= 0){
