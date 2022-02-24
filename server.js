@@ -117,9 +117,12 @@ const denyAllAccess = (areas, playerId) => {
 // @param { int } y
 // @param { context } Object
 // @param { Game } game
-// @return { void }
+// @return { Boolea } isWarpedOut
 //
 const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
+
+  // -- state
+  let isWarpedOut = false;
 
   // -- prepare
   const playerId = context.playerId;
@@ -161,20 +164,25 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
     if( ! isAllowed){
       console.log("❌ NOT ALLOWED!");
 
-      game.teleport(
-        playerMap,
-        lastCoordinates[playerId][0].x,
-        lastCoordinates[playerId][0].y,
-        playerId
-      )
+      if( lastCoordinates[playerId] ){
+        game.teleport(
+          playerMap,
+          lastCoordinates[playerId][0],
+          lastCoordinates[playerId][1],
+          playerId
+        )
+      }
+
+      isWarpedOut = true;
 
       const requiredCondition = space.humanised;
       const msg = `❌ Denied access to ${space.name}, must \n${requiredCondition}`;
 
       game.chat(playerId, [playerId], playerMap, msg)
-    }
 
+    }
   });
+  return isWarpedOut;
 }
 
 // 
@@ -466,24 +474,6 @@ const chatCommandsList = async (senderId, commands, game, context, spaceId) => {
 // ======================================================
 
 //
-// Cache & record user last steps
-// @param { String } playerId
-// @param { int } x
-// @param { int } y
-// @return { void }
-//
-const recordLastSteps = (playerId, x, y) =>{
-  if( ! lastCoordinates[playerId] ){
-    lastCoordinates[playerId] = []
-  }
-  lastCoordinates[playerId].push({x, y});
-  
-  if(lastCoordinates[playerId].length > 2){
-    lastCoordinates[playerId].shift();
-  }
-}
-
-//
 // Handler:: Check if connection is subscribed
 // @param { Boolean } connected
 // @return { void }
@@ -542,13 +532,13 @@ const handlePlayerMoves = async (data, context, game, spaceId) => {
   if( ! userRestrictedCoordinatesCache[playerId] ){
     await setRestrictedSpaces(spaceId, playerId);
   }
-
-  // -- cache user's last positions
-  recordLastSteps(playerId, x, y);
   
   // -- check if user enters restircted areas
-  warpIfDeniedAccess(spaceId, x, y, context, game)
+  const isWarpedOut = await warpIfDeniedAccess(spaceId, x, y, context, game)
 
+  if( ! isWarpedOut ){
+    lastCoordinates[playerId] = [x, y];
+  }
 }
 
 //
