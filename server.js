@@ -48,7 +48,6 @@ const getCenter = (area) => {
 // ======================================================
 const GATHER_API_KEY = process.env.LIT_GATHER_CONTROLLER_GATHER_API_KEY;
 
-
 // ======================================================
 // +                Gather Game States                  +
 // ======================================================
@@ -144,15 +143,14 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
     
     // -- prepare
     const spaceName = space.name;
-    const wallThickness = parseInt(space.wallThickness);
     const topLeft = coordinatesStringToArray(space.topLeft);
     const bottomRight = coordinatesStringToArray(space.bottomRight);
 
     const isInside = (
-      x >= topLeft[0] - wallThickness &&
-      x <= bottomRight[0] + wallThickness && 
-      y >= topLeft[1] - wallThickness && 
-      y <= bottomRight[1] + wallThickness
+      x >= topLeft[0] &&
+      x <= bottomRight[0] && 
+      y >= topLeft[1] && 
+      y <= bottomRight[1]
     );
     
     const isAllowed = userRestrictedCoordinatesCache[playerId][spaceName];
