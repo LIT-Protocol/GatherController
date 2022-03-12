@@ -142,15 +142,16 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
   restrictedSpaceInfo.forEach((space) => {
     
     // -- prepare
+    const WALL_THICKNESS = 1;
     const spaceName = space.name;
     const topLeft = coordinatesStringToArray(space.topLeft);
     const bottomRight = coordinatesStringToArray(space.bottomRight);
 
     const isInside = (
-      x >= topLeft[0] &&
-      x <= bottomRight[0] && 
-      y >= topLeft[1] && 
-      y <= bottomRight[1]
+      x >= topLeft[0] - WALL_THICKNESS &&
+      x <= bottomRight[0] + WALL_THICKNESS &&
+      y >= topLeft[1] - WALL_THICKNESS &&
+      y <= bottomRight[1] + WALL_THICKNESS
     );
     
     const isAllowed = userRestrictedCoordinatesCache[playerId][spaceName];
