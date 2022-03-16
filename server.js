@@ -7,6 +7,7 @@ import ConnectedService from "./models/ConnectedService.js";
 import GatherLockedSpaces from "./models/GatherLockedSpaces.js";
 import GatherPermittedAreas from "./models/GatherPermittedAreas.js";
 import fetch from 'node-fetch';
+import { getDeleteList, handleSpaceDeletion } from "./utils.js";
 
 global.WebSocket = webSocket;
 
@@ -142,7 +143,7 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
   restrictedSpaceInfo.forEach((space) => {
     
     // -- prepare
-    const WALL_THICKNESS = 1;
+    const WALL_THICKNESS = 0;
     const spaceName = space.name;
     const topLeft = coordinatesStringToArray(space.topLeft);
     const bottomRight = coordinatesStringToArray(space.bottomRight);
@@ -503,7 +504,7 @@ const handlePlayerJoins = async (data, context, game, spaceId) => {
   console.log(`👉 initialCoordinates: ${x}, ${y}`)
 
   // -- set user default location
-  game.teleport(playerMap, x, y, playerId);
+  // game.teleport(playerMap, x, y, playerId);
 
   // -- set user restricted areas
   await setRestrictedSpaces(spaceId, playerId)
@@ -518,26 +519,30 @@ const handlePlayerJoins = async (data, context, game, spaceId) => {
 // @return { void } 
 //
 const handlePlayerMoves = async (data, context, game, spaceId) => {
+
   
   // -- prepare
   const playerId = context.playerId;
   const player = context?.player?.name ?? playerId;
   const x = data.playerMoves.x;
   const y = data.playerMoves.y;
-
-  console.log(`🔥 handlePlayerMoves(${spaceId}): ${player} moves to ${x},${y}`)
-
-  // -- check if user cache is set
-  if( ! userRestrictedCoordinatesCache[playerId] ){
-    await setRestrictedSpaces(spaceId, playerId);
+  if(player != 'Anson'){
+    return;
   }
   
+  console.log(`🔥 handlePlayerMoves(${spaceId}): ${player} moves to ${x},${y}`)
+  // console.log(context);
+  // -- check if user cache is set
+  // if( ! userRestrictedCoordinatesCache[playerId] ){
+  //   await setRestrictedSpaces(spaceId, playerId);
+  // }
+  
   // -- check if user enters restircted areas
-  const isWarpedOut = await warpIfDeniedAccess(spaceId, x, y, context, game)
+  // const isWarpedOut = await warpIfDeniedAccess(spaceId, x, y, context, game)
 
-  if( ! isWarpedOut ){
-    lastCoordinates[playerId] = [x, y];
-  }
+  // if( ! isWarpedOut ){
+  //   lastCoordinates[playerId] = [x, y];
+  // }
 }
 
 //
@@ -607,7 +612,6 @@ const initGameInstance = async (spaceId) => {
   }
 
   console.log(`✅ ${spaceId} exists.`)
-  runningInstances.push(spaceId)
 
   // ------------------------------------------------------
   // +             Initalise Gather Web Socket            +
@@ -635,6 +639,9 @@ const initGameInstance = async (spaceId) => {
   // ------------------------------------------------------
   game.subscribeToEvent("playerChats", (data, context) => handlePlayerChat(data, context, game, spaceId))
 
+  // -- add to cache
+  runningInstances.push(game)
+
 }
 
 // ========================================================================================
@@ -661,6 +668,9 @@ if(DEBUG){
 // +                  Check every minute if there are newly created spaces                +
 // +                                ---–––––---------------                               +
 // ========================================================================================
+const POLL_DELETION = 60000;
+const POLL_NEW_INSTANCE = 60000;
+
 setInterval(async () => {
   
   let spacesId = await getAllSpacesId()
@@ -688,4 +698,23 @@ setInterval(async () => {
   });
 
 
-}, 60000);
+}, POLL_NEW_INSTANCE);
+
+//
+// Disconnect deleted space. poll every minute to check
+//
+setInterval(async () => handleSpaceDeletion((deleteIndex) => {
+
+    console.log("Delete Index:", deleteIndex);
+
+    // disconnect instance
+    runningInstances[deleteIndex].disconnect();
+
+    // remove it from cache
+    runningInstances.splice(deleteIndex, 1);
+
+  },
+  await getAllSpacesId(),
+  runningInstances.map((instance) => instance.engine.spaceId.replaceAll('\\', '/'))
+
+), POLL_DELETION)
