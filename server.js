@@ -6,8 +6,14 @@ import knexConfig from "./knexfile.js";
 import ConnectedService from "./models/ConnectedService.js";
 import GatherLockedSpaces from "./models/GatherLockedSpaces.js";
 import GatherPermittedAreas from "./models/GatherPermittedAreas.js";
-import fetch from 'node-fetch';
-import { getDeleteList, handleSpaceDeletion } from "./utils.js";
+
+import { 
+  coordinatesStringToArray,
+  getCenter,
+  checkSpaceDeletion,
+  isSpaceExists,
+  mapInstancesToSpaces,
+} from "./utils.js";
 
 global.WebSocket = webSocket;
 
@@ -17,67 +23,21 @@ const knex = Knex(knexConfig[process.env.NODE_ENV || "development"]);
 // Give the knex instance to objection.
 Model.knex(knex);
 
-// ======================================================
-// +                 General Helpers                    +
-// ======================================================
-//
-// Turn (String) '18,24' into Array [18, 24]
-// @param { String } coordinates '18, 24'
-// @return { Array } [18, 24]
-//
-const coordinatesStringToArray = (coordinates) => {
-  return (coordinates.replaceAll(' ', '')).split(',').map((coor) => parseInt(coor))
-};
-
-//
-// Get center coordinates of a restricted area 
-// by topLeft and bottomRight
-// @param { Object } area | restricted area
-// @return { centerX, center Y} int, int
-//
-const getCenter = (area) => {
-  const offsetX = (coordinatesStringToArray(area.bottomRight)[0] - coordinatesStringToArray(area.topLeft)[0]) / 2;
-  const offsetY = (coordinatesStringToArray(area.bottomRight)[1] - coordinatesStringToArray(area.topLeft)[1]) / 2;
-  const centerX = coordinatesStringToArray(area.topLeft)[0] + offsetX;
-  const centerY = coordinatesStringToArray(area.topLeft)[1] + offsetY;
-
-  return { centerX, centerY } 
-}
 
 // ======================================================
-// +                    CONSTANTS                       +
+// +                     SETTINGS                       +
 // ======================================================
 const GATHER_API_KEY = process.env.LIT_GATHER_CONTROLLER_GATHER_API_KEY;
+const POLL_DELETION = 60000;
+const POLL_NEW_INSTANCE = 60000;
+const DEFAULT_WALL_THICKNESS = 0;
 
 // ======================================================
 // +                Gather Game States                  +
 // ======================================================
-//
-// eg. 
-// {
-//   "xxjOqy4UVxYaHzl2LSs6HygNVbZ2": { <-- playerId
-//     "balcony": false, <-- if user is allowed to enter this space
-//     "roofTop" : false,
-//     ..
-//   }
-// }
 const runningInstances = [];
 const userRestrictedCoordinatesCache = {};
 const lastCoordinates = {};
-
-// ======================================================
-// +                  Gather Helper                     +
-// ======================================================
-
-//
-// (GET) Check if a space exists
-// @param { String } spaceId
-// @return { Boolean } 
-//
-const isSpaceExists = async (spaceId) => {
-  const data = await fetch('https://api.gather.town/api/getRoomInfo?room=' + spaceId);
-  return data.status == 200;
-}
 
 //
 // Initialise an empty object using playerId as key
@@ -100,9 +60,9 @@ const initUserRestrictedCoordinatesCache = (playerId) => {
 // @return { void } 
 //
 const denyAllAccess = (areas, playerId) => {
-  console.log(`❌ denyAllAccess: ${areas} ${playerId}`)
+  console.log(`❌ deny [${playerId}] all accesses to areas [${areas}]`)
   areas.forEach((area) => {
-    userRestrictedCoordinatesCache[playerId][area.name] = false;
+    userRestrictedCoordinatesCache[playerId][area] = false;
   })
 }
 
@@ -138,30 +98,33 @@ const warpIfDeniedAccess = async (spaceId, x, y, context, game) => {
 
   const restrictedSpaceInfo = JSON.parse((restrictedAreasResult)[0].restricted_spaces);
   
-  // console.log("👉 restrictedSpaceInfo:", restrictedSpaceInfo);
-
   restrictedSpaceInfo.forEach((space) => {
     
     // -- prepare
-    const WALL_THICKNESS = 0;
     const spaceName = space.name;
+    const spaceMap = space.map;
     const topLeft = coordinatesStringToArray(space.topLeft);
     const bottomRight = coordinatesStringToArray(space.bottomRight);
 
     const isInside = (
-      x >= topLeft[0] - WALL_THICKNESS &&
-      x <= bottomRight[0] + WALL_THICKNESS &&
-      y >= topLeft[1] - WALL_THICKNESS &&
-      y <= bottomRight[1] + WALL_THICKNESS
+      x >= topLeft[0] - DEFAULT_WALL_THICKNESS &&
+      x <= bottomRight[0] + DEFAULT_WALL_THICKNESS &&
+      y >= topLeft[1] - DEFAULT_WALL_THICKNESS &&
+      y <= bottomRight[1] + DEFAULT_WALL_THICKNESS &&
+      spaceMap == playerMap
     );
+
+    // console.log("isInside: ", isInside);
     
     const isAllowed = userRestrictedCoordinatesCache[playerId][spaceName];
+    // console.log(userRestrictedCoordinatesCache);
+    // console.log("isAllowed: ", isAllowed);
 
     // -- validate:: do nothing if it's outside
     if( ! isInside ){ return }
 
     // -- validate:: if user is not allowed, teleport user
-    if( ! isAllowed){
+    if( ! isAllowed ){
       console.log("❌ NOT ALLOWED!");
 
       if( lastCoordinates[playerId] ){
@@ -265,20 +228,31 @@ const setRestrictedSpaces = async (spaceId, playerId) => {
 // ======================================================
 
 //
-// Get the X, Y cooridnates of the initial position
+// Get the X, Y cooridnates of the spawn location and its map
 // @param { Int } spaceId
-// @return {x, y}
+// @return {map, x, y}
 //
-const getInitialCoordinates = async (spaceId) => {
-  console.log("🔥 getInitialCoordinates")
+const getSpawnData = async (spaceId) => {
+  console.log("🔥 getSpawnData")
 
-  let coordinates = (await GatherLockedSpaces.query().where({space_id: spaceId}))[0]?.initial_coordinates || '31,32';
+  let row = (await GatherLockedSpaces.query().where({
+    space_id: spaceId
+  }))[0];
 
+  let coordinates = row?.initial_coordinates;
+  let map = row?.initial_map;
+
+  if( ! coordinates ){
+    return {error: '❌ [ERROR] Failed to get spawn coordinates', x: null, y: null};
+  }
+  
   console.log(`👉 coordinates: ${coordinates}`);
+  console.log(`👉 map: ${map}`);
+
   coordinates = coordinates.split(',').map((coor) => parseInt(coor))
   const x = coordinates[0];
   const y = coordinates[1];
-  return { x, y };
+  return { map, x, y };
 }
 
 //
@@ -497,14 +471,16 @@ const handlePlayerJoins = async (data, context, game, spaceId) => {
   // -- prepare
   const playerId = context.playerId;
   const playerMap = context.player.map;
-  const {x, y} = await getInitialCoordinates(spaceId);
+  const {map, x, y} = await getSpawnData(spaceId);
 
   console.log(`👉 playerId: ${playerId}`);
   console.log(`👉 playerMap: ${playerMap}`);
-  console.log(`👉 initialCoordinates: ${x}, ${y}`)
+  console.log(`👉 Spawn Data: ${map}, ${x}, ${y}`)
 
   // -- set user default location
-  // game.teleport(playerMap, x, y, playerId);
+  if( map && x && y ){
+    game.teleport(map, x, y, playerId);
+  }
 
   // -- set user restricted areas
   await setRestrictedSpaces(spaceId, playerId)
@@ -520,29 +496,29 @@ const handlePlayerJoins = async (data, context, game, spaceId) => {
 //
 const handlePlayerMoves = async (data, context, game, spaceId) => {
 
-  
   // -- prepare
   const playerId = context.playerId;
   const player = context?.player?.name ?? playerId;
   const x = data.playerMoves.x;
   const y = data.playerMoves.y;
-  if(player != 'Anson'){
+  
+  if(player != 'Anson' && player != 'aaa'){
     return;
   }
+
+  console.log(`🔥[${spaceId}][${context.player.map}][${playerId}] ${player} moves to ${x},${y}`)
   
-  console.log(`🔥 handlePlayerMoves(${spaceId}): ${player} moves to ${x},${y}`)
-  // console.log(context);
   // -- check if user cache is set
-  // if( ! userRestrictedCoordinatesCache[playerId] ){
-  //   await setRestrictedSpaces(spaceId, playerId);
-  // }
+  if( ! userRestrictedCoordinatesCache[playerId] ){
+    await setRestrictedSpaces(spaceId, playerId);
+  }
   
   // -- check if user enters restircted areas
-  // const isWarpedOut = await warpIfDeniedAccess(spaceId, x, y, context, game)
+  const isWarpedOut = await warpIfDeniedAccess(spaceId, x, y, context, game)
 
-  // if( ! isWarpedOut ){
-  //   lastCoordinates[playerId] = [x, y];
-  // }
+  if( ! isWarpedOut ){
+    lastCoordinates[playerId] = [x, y];
+  }
 }
 
 //
@@ -649,41 +625,32 @@ const initGameInstance = async (spaceId) => {
 // +                                ---–––––---------------                               +
 // + https://gathertown.notion.site/Gather-Websocket-API-bf2d5d4526db412590c3579c36141063 +
 // ========================================================================================
+// initGameInstance("tXVe5OYt6nHS9Ey5/lit-protocol")
+// initGameInstance("4Tq4fQkpxC2Tfci1/Monkey Kingdom")
 
-const DEBUG = false;
-
-if(DEBUG){
-  // initGameInstance("tXVe5OYt6nHS9Ey5/lit-protocol")
-  initGameInstance("4Tq4fQkpxC2Tfci1/Monkey Kingdom")
-}else{
-  let ALL_SPACES = await getAllSpacesId();
-  
-  ALL_SPACES.forEach((spaceId) => {
-    initGameInstance(spaceId);
-  })
-}
+(await getAllSpacesId()).forEach((spaceId) => {
+  initGameInstance(spaceId);
+})
 
 
 // ========================================================================================
 // +                  Check every minute if there are newly created spaces                +
 // +                                ---–––––---------------                               +
 // ========================================================================================
-const POLL_DELETION = 60000;
-const POLL_NEW_INSTANCE = 60000;
-
 setInterval(async () => {
   
   let spacesId = await getAllSpacesId()
+  const runningSpacesId = mapInstancesToSpaces(runningInstances);
 
   // console.log("👉 spacesId:", JSON.stringify(spacesId))
-  // console.log("👉 runningInstances:", JSON.stringify(runningInstances))
+  // console.log("👉 runningSpacesId:", runningSpacesId)
 
   let logged = false;
 
   spacesId.forEach((spaceId, i) => {
 
     // -- ignore spaces that are already running
-    if(runningInstances.includes(spaceId)){
+    if(runningSpacesId.includes(spaceId)){
       if( ! logged ){
         console.log(`[${Date.now()}] 💤 Nothing new here.. still running the same-old instances.`);
         logged = true;
@@ -698,12 +665,12 @@ setInterval(async () => {
   });
 
 
-}, POLL_NEW_INSTANCE);
+}, 5000);
 
 //
 // Disconnect deleted space. poll every minute to check
 //
-setInterval(async () => handleSpaceDeletion((deleteIndex) => {
+setInterval(async () => checkSpaceDeletion((deleteIndex) => {
 
     console.log("Delete Index:", deleteIndex);
 
@@ -715,6 +682,6 @@ setInterval(async () => handleSpaceDeletion((deleteIndex) => {
 
   },
   await getAllSpacesId(),
-  runningInstances.map((instance) => instance.engine.spaceId.replaceAll('\\', '/'))
+  mapInstancesToSpaces(runningInstances)
 
 ), POLL_DELETION)

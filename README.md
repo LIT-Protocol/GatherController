@@ -1,5 +1,12 @@
 # Gather Controller
 
+# Features
+
+## 16 March 2022
+
+- [x] (backend) Added space deletion detection
+
+
 ## Models
 
 - GatherLockedSpaces.js
