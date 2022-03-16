@@ -5,6 +5,7 @@
 ## 16 March 2022
 
 - [x] (backend) Added space deletion detection
+- [x] (backend) Added per-space gated support
 
 
 ## Models
