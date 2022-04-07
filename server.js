@@ -503,10 +503,6 @@ const handlePlayerMoves = async (data, context, game, spaceId) => {
   const player = context?.player?.name ?? playerId;
   const x = data.playerMoves.x;
   const y = data.playerMoves.y;
-  
-  if(player != 'Anson' && player != 'aaa'){
-    return;
-  }
 
   console.log(`🔥[${spaceId}][${context.player.map}][${playerId}] ${player} moves to ${x},${y}`)
   
@@ -718,8 +714,8 @@ setInterval(async () => {
       status: 'pending',
   });
 
-  console.log('-----');
-  console.log(`Pending List: Found ${pendingList.length}`);
+  // console.log('-----');
+  // console.log(`Pending List: Found ${pendingList.length}`);
 
   pendingList.forEach(async (item) => {
       console.log(`message: ${item.message}`);
@@ -731,6 +727,7 @@ setInterval(async () => {
       const playerId = message[3];
 
       if(action == 'check'){
+          console.log(`✅ Re-initialised areas for ${walletAddress}`);
           
           // == do your thing here
           // -- @required walletAddress
