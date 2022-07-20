@@ -38,6 +38,7 @@ const DEFAULT_WALL_THICKNESS = 0;
 // +                Gather Game States                  +
 // ======================================================
 const runningInstances = [];
+const gameInstancesBySpaceId = [];
 const userRestrictedCoordinatesCache = {};
 const lastCoordinates = {};
 
@@ -242,7 +243,7 @@ const getSpawnData = async (spaceId) => {
   }))[0];
 
   let coordinates = row?.initial_coordinates;
-  let map = row?.initial_map;
+  let map = row?.initial_map?.trimEnd();
 
   if( ! coordinates ){
     return {error: '❌ [ERROR] Failed to get spawn coordinates', x: null, y: null};
@@ -480,7 +481,8 @@ const handlePlayerJoins = async (data, context, game, spaceId) => {
   console.log(`👉 Spawn Data: ${map}, ${x}, ${y}`)
 
   // -- set user default location
-  if( map && x && y ){
+  // -- (11 July, 2022) This is to temporarily disable the default spawn coordiantes
+  if( map && x && y && spaceId != 'tCDKwh6U7LzTtzCQ/dYdX'){
     game.teleport(map, x, y, playerId);
   }
 
@@ -614,8 +616,8 @@ const initGameInstance = async (spaceId) => {
   game.subscribeToEvent("playerChats", (data, context) => handlePlayerChat(data, context, game, spaceId))
 
   // -- add to cache
-  runningInstances.push(game)
-
+  runningInstances.push(game);
+  gameInstancesBySpaceId.push({spaceId, game});
 }
 
 // ========================================================================================
@@ -692,15 +694,41 @@ setInterval(async () => checkSpaceDeletion((deleteIndex) => {
 //
 const getPermittedAreas = async (walletAddress, spaceId) => {
     
-  let permitted_areas = await GatherPermittedAreas.query().findOne({
-      wallet_address: walletAddress,
-      space_id: spaceId
-  });
+  let permitted_areas;
 
-  permitted_areas = permitted_areas?.permitted_areas;
-  permitted_areas = JSON.parse(permitted_areas);
+  try{
+    permitted_areas = await GatherPermittedAreas.query().findOne({
+        wallet_address: walletAddress,
+        space_id: spaceId
+    });
+    
+    permitted_areas = permitted_areas?.permitted_areas;
+    permitted_areas = JSON.parse(permitted_areas);
+  
+    return permitted_areas;
+  }catch(e){
+    console.error(`❌ Failed to get ${walletAddress}'s permitted areas in ${spaceId} `)
+    console.error("❌ getPermittedAreas():", e);
+  }
+}
 
-  return permitted_areas;
+/**
+ * Send a message in the chat when user gained access to the token gated area
+ * @param { string } playerId
+ * @param { string } spaceId
+ * @param { string } message
+ * @return { void } 
+ */
+ const notifyAuthed = async (playerId, findThisSpaceId, message = 'Unlocked token-gated space!') => {
+
+  const foundGameInstance = (gameInstancesBySpaceId.find((obj) => obj.spaceId == findThisSpaceId)).game
+  
+  const player = foundGameInstance.getPlayer(playerId);
+  const playerMap = player.map;
+
+  foundGameInstance.ghost(0, playerId);
+  foundGameInstance.chat(playerId, [playerId], playerMap, message);
+  
 }
 
 // 
@@ -739,9 +767,12 @@ setInterval(async () => {
               userRestrictedCoordinatesCache[playerId] = {}
           }
 
-          permitted_areas.forEach((area) => {
-              userRestrictedCoordinatesCache[playerId][area] = true;
-          });
+          if( permitted_areas ){
+            permitted_areas.forEach((area) => {
+                userRestrictedCoordinatesCache[playerId][area] = true;
+                notifyAuthed(playerId, spaceId, `🎉 You've gained access to ${area}! `);
+            });
+          }
 
           console.log("userRestrictedCoordinatesCache:", userRestrictedCoordinatesCache);
           
